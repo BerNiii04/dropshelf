@@ -1,0 +1,516 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DropShelf, un estante de cristal para Windows</title>
+<meta name="description" content="Arrastra archivos al borde derecho de la pantalla, déjalos ahí mientras cambias de ventana y sácalos cuando los necesites. Para Windows 10 y 11, pago único.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<meta property="og:title" content="DropShelf, un estante de cristal para Windows">
+<meta property="og:description" content="Aparca archivos en el borde de la pantalla y sácalos cuando los necesites. Pago único.">
+<meta property="og:image" content="assets/icon-512.png">
+<link rel="preload" href="assets/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  @font-face { font-family: "Geist"; font-weight: 200 600; font-display: swap; src: url(assets/fonts/geist.woff2) format("woff2"); }
+  :root {
+    --bg: #000;
+    --ink: #f3f4f6;
+    --muted: #9a9ea8;
+    --faint: #5b5f69;
+    --line: rgba(255, 255, 255, .1);
+    --halo: #9fd2ff;                      /* highlight taken from the app icon */
+    --ease: cubic-bezier(.22, 1, .36, 1);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); overflow-x: hidden;
+    font: 400 1.0625rem/1.6 "Geist", "Segoe UI Variable Text", system-ui, sans-serif; letter-spacing: -.005em; }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: 14px; background: #000; z-index: 59; }
+  a { color: inherit; }
+  :focus-visible { outline: 2px solid var(--halo); outline-offset: 3px; border-radius: 10px; }
+  .wrap { width: min(1120px, 100% - 2 * clamp(16px, 5vw, 56px)); margin-inline: auto; }
+
+  /* ---------- liquid glass (same recipe as the app) ---------- */
+  .glass { position: relative;
+    background: linear-gradient(145deg, rgba(255,255,255,.15), rgba(255,255,255,.035) 55%, rgba(255,255,255,.085));
+    -webkit-backdrop-filter: blur(22px) saturate(1.7); backdrop-filter: blur(22px) saturate(1.7);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.4), inset 0 -1px 0 rgba(255,255,255,.07), inset 0 0 36px rgba(255,255,255,.045), 0 28px 70px rgba(0,0,0,.6); }
+  .glass::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px; pointer-events: none;   /* rim light */
+    background: linear-gradient(135deg, rgba(255,255,255,.75), rgba(255,255,255,.07) 30%, rgba(255,255,255,.03) 62%, rgba(255,255,255,.4));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0); }
+
+  /* ---------- nav: the only buy button lives here ---------- */
+  .nav { position: sticky; top: 14px; z-index: 60; display: flex; align-items: center; gap: 8px;
+    margin: 14px auto 0; width: min(1120px, 100% - 2 * clamp(16px, 5vw, 56px)); padding: 8px 8px 8px 18px; border-radius: 999px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 500; letter-spacing: -.01em; text-decoration: none; margin-right: auto; }
+  .brand img { width: 28px; height: 28px; display: block; }
+  .btn { display: inline-flex; align-items: center; gap: .5em; padding: 9px 18px; border-radius: 999px; font: inherit; font-weight: 500; font-size: .92rem;
+    text-decoration: none; cursor: pointer; border: 0; white-space: nowrap; transition: transform .25s var(--ease), box-shadow .25s var(--ease), background .25s, color .25s; }
+  .btn.solid { color: #05070b; background: linear-gradient(180deg, #fff, #dfe6f0);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.5), 0 10px 34px rgba(120,190,255,.28), inset 0 -2px 0 rgba(0,0,0,.1); }
+  .btn.solid:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,255,255,.6), 0 14px 42px rgba(120,190,255,.42), inset 0 -2px 0 rgba(0,0,0,.1); }
+  /* language switch: its own corner button on wide screens, inside the nav when there is no room beside it */
+  .btn.lang { position: fixed; top: 22px; right: 22px; z-index: 61; color: var(--ink); background: rgba(255,255,255,.07); box-shadow: inset 0 0 0 1px var(--line); padding-inline: 14px; letter-spacing: .02em;
+    -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .nav .btn.lang { position: static; display: none; }
+  @media (max-width: 1320px) { .nav .btn.lang { display: inline-flex; } body > .btn.lang { display: none; } }
+  .btn.lang:hover { background: rgba(255,255,255,.14); }
+  .quiet { color: var(--muted); text-decoration: none; font-weight: 500; font-size: .97rem; }
+  .quiet:hover { color: var(--ink); }
+  .copy-link { display: none; margin-top: 16px; color: var(--ink); background: rgba(255,255,255,.08); box-shadow: inset 0 0 0 1px var(--line); }
+  @media (pointer: coarse) { .copy-link { display: inline-flex; } }
+
+  /* ---------- hero ---------- */
+  .hero { padding-block: clamp(48px, 9vh, 96px) 0; }
+  .top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 24rem); gap: 28px clamp(32px, 6vw, 96px); align-items: end; }
+  h1 { font-size: clamp(2.9rem, 6.8vw, 5.9rem); line-height: .96; letter-spacing: -.05em; font-weight: 300; margin: 0; text-wrap: balance; }
+  .lede { font-size: clamp(1.05rem, 1.4vw, 1.2rem); color: var(--muted); margin: 0 0 18px; text-wrap: pretty; }
+  @media (max-width: 860px) { .top { grid-template-columns: 1fr; } }
+
+  /* the stage is a believable Windows desktop; the shelf on it is the real product */
+  .stage { position: relative; margin-top: clamp(40px, 7vh, 64px); height: clamp(520px, 62vw, 640px); border-radius: clamp(20px, 3vw, 32px); overflow: hidden;
+    background: #02030a; box-shadow: 0 0 0 1px var(--line), 0 60px 160px rgba(30, 110, 255, .22); isolation: isolate; }
+  .wall { position: absolute; inset: 0; z-index: -1;
+    background:
+      radial-gradient(36% 46% at 78% 14%, rgba(34, 211, 238, .55), transparent 70%),
+      radial-gradient(46% 58% at 14% 100%, rgba(37, 99, 255, .7), transparent 72%),
+      radial-gradient(30% 34% at 58% 62%, rgba(120, 90, 255, .22), transparent 70%),
+      linear-gradient(180deg, #02030a, #040a1c); }
+  .win { position: absolute; border-radius: 14px; background: rgba(14, 17, 26, .86); box-shadow: 0 0 0 1px rgba(255,255,255,.08), 0 40px 90px rgba(0,0,0,.65); overflow: hidden; }
+  .win::before { content: ""; display: block; height: 36px; border-bottom: 1px solid rgba(255,255,255,.06);
+    background: radial-gradient(circle at calc(100% - 20px) 50%, rgba(255,255,255,.35) 0 3px, transparent 4px), radial-gradient(circle at calc(100% - 44px) 50%, rgba(255,255,255,.2) 0 3px, transparent 4px); }
+  .win::after { content: ""; position: absolute; inset: 52px 18px 18px;
+    background: repeating-linear-gradient(180deg, rgba(255,255,255,.075) 0 9px, transparent 9px 27px);
+    -webkit-mask: linear-gradient(90deg, #000 70%, transparent); mask: linear-gradient(90deg, #000 70%, transparent); }
+  .win.a { left: 19%; top: 11%; width: 46%; height: 64%; }
+  .win.b { left: 52%; top: 34%; width: 30%; height: 46%; background: rgba(18, 26, 44, .88); }
+  .win.b::after { background: repeating-linear-gradient(180deg, rgba(150,200,255,.16) 0 9px, transparent 9px 31px); }
+
+  .icons { position: absolute; left: 14px; top: 14px; display: flex; flex-direction: column; gap: 2px; }
+  .file { width: 92px; padding: 9px 6px 7px; border: 0; border-radius: 10px; background: transparent; color: var(--ink);
+    font: inherit; font-size: .78rem; line-height: 1.25; text-align: center; cursor: grab; touch-action: none;
+    transition: background .15s, opacity .25s, transform .3s var(--ease); }
+  .file:hover { background: rgba(255,255,255,.1); }
+  .file em { font-style: normal; }
+  .file.copy { position: absolute; z-index: 5; }
+  .file.new { animation: back .45s var(--ease); }
+  @keyframes back { from { transform: scale(.6); opacity: 0; } }
+  .glyph { display: grid; place-items: center; width: 46px; height: 56px; margin: 0 auto 6px; border-radius: 6px 13px 6px 6px;
+    font-weight: 600; font-size: .66rem; letter-spacing: .03em; color: #fff; box-shadow: 0 6px 16px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.5); }
+  .t-pdf { background: linear-gradient(160deg, #ff7676, #b82a4a); }
+  .t-png { background: linear-gradient(160deg, #ffcb6b, #ef6a4d); }
+  .t-mp4 { background: linear-gradient(160deg, #6db1ff, #2447d6); }
+  .t-zip { background: linear-gradient(160deg, #62e6c8, #1b86ad); }
+  .ghost { position: fixed; z-index: 90; pointer-events: none; width: 92px; text-align: center;
+    transform: translate(-50%, -50%) rotate(-4deg) scale(1.06); filter: drop-shadow(0 14px 22px rgba(0,0,0,.5)); }
+
+  .taskbar { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 9px; padding: 9px 14px; border-radius: 20px; }
+  .taskbar i { width: 26px; height: 26px; border-radius: 8px; background: rgba(255,255,255,.2); box-shadow: inset 0 1px 0 rgba(255,255,255,.35); }
+  .taskbar i:nth-child(2) { background: rgba(120,190,255,.5); } .taskbar i:nth-child(4) { background: rgba(255,255,255,.12); }
+  .taskbar img { width: 26px; height: 26px; display: block; }
+
+  /* the shelf: pixel-for-pixel the app's panel (src/index.html) */
+  .shelf { position: absolute; z-index: 40; right: 0; top: 50%; width: 22px; height: 160px; transform: translateY(-50%); --tint: .22;
+    border-radius: 8px; overflow: hidden; color: var(--ink); font-size: 13px; line-height: 1.3; /* Windows 11 rounds every corner of the real window */
+    background: linear-gradient(145deg, rgba(255,255,255,.16), rgba(255,255,255,.02) 50%, rgba(255,255,255,.09)), rgba(8, 10, 16, var(--tint));
+    transition: width .35s var(--ease), height .35s var(--ease), box-shadow .3s; }
+  .shelf.open { width: 300px; height: 440px; }
+  .shelf.over { box-shadow: inset 0 0 0 1.5px rgba(120,200,255,.9), inset 0 0 50px rgba(60,150,255,.35), 0 28px 70px rgba(0,0,0,.6); }
+  .grip { position: absolute; inset: 0 0 0 auto; width: 22px; display: grid; place-items: center; transition: opacity .2s; }
+  .grip b { width: 4px; height: 44px; border-radius: 4px; background: rgba(255,255,255,.65); transition: .3s var(--ease); }
+  .count { position: absolute; bottom: 10px; left: 3px; min-width: 16px; height: 16px; border-radius: 8px; text-align: center; line-height: 16px;
+    font-size: 11px; font-weight: 600; background: var(--halo); color: #05070b; transform: scale(0); transition: transform .3s var(--ease); }
+  .shelf.has .count { transform: scale(1); }
+  .shelf.over .grip b { height: 70px; background: var(--halo); box-shadow: 0 0 16px var(--halo); }
+  .shelf.open .grip { opacity: 0; }
+  .panel { position: absolute; top: 0; right: 0; bottom: 0; width: 300px; padding: 16px; display: flex; flex-direction: column; gap: 12px; opacity: 0; transition: opacity .2s; }
+  .shelf.open .panel { opacity: 1; transition-delay: .08s; }
+  .panel header { display: flex; justify-content: space-between; align-items: center; padding: 2px 4px; font-size: 13.5px; font-weight: 500; }
+  .panel header button { all: unset; cursor: pointer; color: var(--muted); font-size: 12px; padding: 3px 8px; border-radius: 8px; }
+  .panel header button:hover { color: var(--ink); background: rgba(255,255,255,.12); }
+  .drop { position: relative; flex: 1; min-height: 0; }
+  .tiles { height: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; overflow: auto; scrollbar-width: none; padding: 6px 4px 4px; margin: -6px -4px -4px; }
+  .tile { position: relative; padding: 8px; border-radius: 16px; cursor: grab; touch-action: none; font-size: 12px;
+    background: linear-gradient(160deg, rgba(255,255,255,.17), rgba(255,255,255,.05));
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 0 0 1px rgba(255,255,255,.08), 0 6px 14px rgba(0,0,0,.25);
+    animation: pop .4s var(--ease) both; transition: background .15s, transform .2s var(--ease); }
+  .tile:hover { background: linear-gradient(160deg, rgba(255,255,255,.26), rgba(255,255,255,.09)); transform: translateY(-2px); }
+  .tile .glyph { width: 100%; height: 64px; border-radius: 9px; margin: 0; font-size: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+  .tile span { display: block; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; opacity: .9; }
+  .x { position: absolute; top: 3px; right: 3px; width: 22px; height: 22px; border-radius: 50%; border: 0; cursor: pointer; padding: 0;
+    background: rgba(0,0,0,.6); color: #fff; font-size: 11px; line-height: 22px; opacity: 0; transform: scale(.6); transition: .15s var(--ease);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25); }
+  .tile:hover .x, .x:focus-visible { opacity: 1; transform: none; }
+  @media (hover: none) { .x { opacity: 1; transform: none; } }
+  @keyframes pop { from { opacity: 0; transform: scale(.82) translateY(10px); } }
+  .empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 12px; pointer-events: none;
+    border: 1.5px dashed rgba(255,255,255,.22); border-radius: 18px; color: rgba(255,255,255,.72); transition: .25s var(--ease); }
+  .empty small { display: block; opacity: .6; font-size: 11.5px; margin-top: 4px; }
+  .shelf.has .empty { opacity: 0; }
+  .shelf.over .empty { opacity: 1; border-color: rgba(120,200,255,.9); background: rgba(60,150,255,.16); }
+  .tint { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px; font-size: 12px; color: var(--muted); }
+  .tint input { -webkit-appearance: none; appearance: none; width: 130px; height: 3px; border-radius: 3px; background: rgba(255,255,255,.28); margin: 0; outline-offset: 6px; }
+  .tint input::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.5); cursor: pointer; }
+  .tint input::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #fff; cursor: pointer; }
+  .caption { margin: 18px 4px 0; color: var(--faint); font-size: .92rem; }
+
+  /* ---------- sections ---------- */
+  section.plain { padding-block: clamp(88px, 15vh, 168px) 0; }
+  h2 { font-size: clamp(2rem, 4.2vw, 3.4rem); line-height: 1.02; letter-spacing: -.04em; font-weight: 300; margin: 0 0 40px; max-width: 16ch; text-wrap: balance; }
+  .steps { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); border-radius: 28px; overflow: hidden; counter-reset: s; }
+  .steps li { counter-increment: s; padding: clamp(24px, 3.4vw, 40px); }
+  .steps li + li { box-shadow: inset 1px 0 0 var(--line); }
+  .steps li::before { content: counter(s); display: block; font-size: 3.6rem; font-weight: 200; line-height: 1; letter-spacing: -.05em; color: var(--halo); margin-bottom: 40px; }
+  .steps b { display: block; font-weight: 500; font-size: 1.2rem; letter-spacing: -.015em; margin-bottom: 8px; }
+  .steps p { margin: 0; color: var(--muted); max-width: 30ch; }
+
+  .two { display: grid; grid-template-columns: 5fr 7fr; gap: clamp(32px, 6vw, 96px); align-items: start; }
+  .two h2 { position: sticky; top: 110px; margin: 0; }
+  dl.facts { margin: 0; }
+  dl.facts > div { padding: 22px 0; border-top: 1px solid var(--line); }
+  dl.facts > div:last-child { border-bottom: 1px solid var(--line); }
+  dl.facts dt { font-weight: 500; font-size: 1.15rem; letter-spacing: -.015em; margin-bottom: 4px; }
+  dl.facts dd { margin: 0; color: var(--muted); max-width: 52ch; }
+
+  /* price: glass over two soft lights (plain gradients, no blur filter: blur filters band and pixelate) */
+  .buyzone { position: relative; isolation: isolate; padding: 40px 0; }
+  .buyzone::before { content: ""; position: absolute; inset: -10% -6%; z-index: -1; pointer-events: none;
+    background: radial-gradient(closest-side at 28% 45%, rgba(37, 99, 255, .7), rgba(37, 99, 255, .25) 55%, transparent),
+                radial-gradient(closest-side at 74% 62%, rgba(34, 211, 238, .45), rgba(34, 211, 238, .12) 60%, transparent); }
+  .price { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: clamp(24px, 6vw, 80px); padding: clamp(32px, 6vw, 72px); border-radius: 36px; }
+  .amount { font-size: clamp(3rem, 9vw, 6.5rem); font-weight: 200; line-height: .9; letter-spacing: -.06em; white-space: nowrap; }
+  .price p { margin: 0; color: #d6dae3; max-width: 36ch; font-size: 1.15rem; line-height: 1.5; }
+  .price p span { display: block; color: var(--muted); font-size: 1rem; margin-top: 10px; }
+
+  details { border-top: 1px solid var(--line); padding: 22px 0; max-width: 780px; }
+  details:last-of-type { border-bottom: 1px solid var(--line); }
+  summary { cursor: pointer; font-weight: 500; font-size: 1.1rem; letter-spacing: -.01em; list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+  summary::-webkit-details-marker { display: none; }
+  summary::after { content: "+"; font-weight: 200; font-size: 1.5rem; line-height: 1; color: var(--halo); transition: transform .3s var(--ease); }
+  details[open] summary::after { transform: rotate(45deg); }
+  details p { color: var(--muted); margin: 12px 0 0; max-width: 62ch; }
+  footer { margin-top: clamp(88px, 14vh, 150px); padding-block: 32px 48px; border-top: 1px solid var(--line); color: var(--muted); font-size: .92rem; display: flex; flex-wrap: wrap; gap: 12px 28px; }
+  footer span { margin-right: auto; }
+  footer a { text-decoration: none; } footer a:hover { color: var(--ink); }
+  .toast { position: fixed; left: 50%; bottom: 24px; z-index: 95; transform: translate(-50%, 20px); opacity: 0; padding: 10px 18px; border-radius: 999px; font-size: .92rem;
+    transition: .3s var(--ease); pointer-events: none; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 860px) {
+    .two { grid-template-columns: 1fr; } .two h2 { position: static; margin-bottom: 32px; }
+    .price { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .steps { grid-template-columns: 1fr; } .steps li + li { box-shadow: inset 0 1px 0 var(--line); }
+    .steps li::before { margin-bottom: 20px; }
+    .stage { height: 580px; }
+    .icons { flex-direction: row; left: 8px; right: 8px; top: 10px; }
+    .file { width: 76px; font-size: .7rem; } .icons .glyph { width: 40px; height: 48px; }
+    .win.a { left: 6%; top: 36%; width: 88%; height: 46%; } .win.b { display: none; }
+    .shelf { top: 58%; } .shelf.open { width: 268px; height: 410px; } .panel { width: 268px; }
+    .taskbar { display: none; }
+  }
+  @media (max-width: 420px) { .nav .brand span { display: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } html { scroll-behavior: auto; } }
+</style>
+</head>
+<body>
+
+<nav class="nav glass" aria-label="Principal">
+  <a class="brand" href="#"><img src="assets/icon-512.png" alt="" width="28" height="28"><span>DropShelf</span></a>
+  <button class="btn lang" type="button" aria-label="English">EN</button>
+  <a class="btn solid" data-buy href="#precio" data-t="buy">Instalar</a>
+</nav>
+
+<button class="btn lang" type="button" aria-label="English">EN</button>
+
+<header class="hero wrap">
+  <div class="top">
+    <h1 data-t="h1">Aparca archivos en el borde de tu pantalla</h1>
+    <div>
+      <p class="lede" data-t="lede">Arrastra lo que necesites al borde derecho, cambia de ventana y suéltalo donde haga falta. Para Windows 10 y 11.</p>
+      <a class="quiet" href="#como" data-t="how">Cómo funciona</a>
+      <button class="btn copy-link" type="button" data-t="copy">Copiar enlace para abrirlo en el PC</button>
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="wall"></div>
+    <div class="win a"></div>
+    <div class="win b"></div>
+
+    <div class="icons" role="list" aria-describedby="hint">
+      <button class="file" data-type="pdf" data-name="f1" role="listitem"><span class="glyph t-pdf">PDF</span><em></em></button>
+      <button class="file" data-type="png" data-name="f2" role="listitem"><span class="glyph t-png">PNG</span><em></em></button>
+      <button class="file" data-type="mp4" data-name="f3" role="listitem"><span class="glyph t-mp4">MP4</span><em></em></button>
+      <button class="file" data-type="zip" data-name="f4" role="listitem"><span class="glyph t-zip">ZIP</span><em></em></button>
+    </div>
+
+    <div class="taskbar glass" aria-hidden="true"><i></i><i></i><i></i><i></i><img src="assets/icon-512.png" alt=""></div>
+
+    <aside class="shelf glass" aria-label="Demo de DropShelf">
+      <div class="grip" aria-hidden="true"><b></b><span class="count">0</span></div>
+      <div class="panel">
+        <header><span>DropShelf</span><button type="button" data-clear data-t="clear">Vaciar</button></header>
+        <div class="drop">
+          <div class="tiles"></div>
+          <div class="empty"><div><span data-t="drop">Suelta archivos aquí</span><small data-t="dropSub">Arrástralos fuera cuando los necesites</small></div></div>
+        </div>
+        <label class="tint"><span data-t="transp">Transparencia</span><input type="range" min="0" max="100" value="60"></label>
+      </div>
+    </aside>
+  </div>
+  <p class="caption" id="hint" data-t="hint">Pruébalo aquí: arrastra un archivo al borde derecho y luego sácalo al escritorio. El original no se mueve: lo que sacas es una copia.</p>
+</header>
+
+<main class="wrap">
+  <section class="plain" aria-labelledby="como">
+    <h2 id="como" data-t="howH">Así se usa</h2>
+    <ol class="steps glass">
+      <li><b data-t="s1">Arrastra al borde</b><p data-t="s1p">Lleva cualquier archivo, o una imagen de una web, hasta el borde derecho. El estante se abre solo.</p></li>
+      <li><b data-t="s2">Sigue a lo tuyo</b><p data-t="s2p">Cierra la carpeta, cambia de ventana, busca dónde va. El archivo te espera en el estante.</p></li>
+      <li><b data-t="s3">Sácalo donde quieras</b><p data-t="s3p">Arrástralo a un chat, un correo, otra carpeta o tu editor. Se suelta como un archivo normal.</p></li>
+    </ol>
+  </section>
+
+  <section class="plain two" aria-labelledby="trae">
+    <h2 id="trae" data-t="featH">Lo que trae</h2>
+    <dl class="facts">
+      <div><dt data-t="f1t">Cristal de verdad</dt><dd data-t="f1d">Desenfoca lo que hay detrás. Tú decides cuánta transparencia quieres.</dd></div>
+      <div><dt data-t="f2t">Vista previa</dt><dd data-t="f2d">Cada archivo muestra su miniatura, la misma que en el Explorador, también mientras lo arrastras.</dd></div>
+      <div><dt data-t="f3t">Imágenes de webs</dt><dd data-t="f3d">Arrastra una foto desde el navegador y queda lista en el estante, sin pasar por "Guardar como". Luego la sueltas en la carpeta que quieras.</dd></div>
+      <div><dt data-t="f4t">Se aparta cuando quieres</dt><dd data-t="f4d">Ctrl+Alt+D lo oculta o lo vuelve a mostrar. También desde el icono junto al reloj.</dd></div>
+      <div><dt data-t="f5t">Ligero</dt><dd data-t="f5d">El instalador pesa 1,3 MB. Usa el motor web que ya trae Windows, así que no carga un navegador entero.</dd></div>
+      <div><dt data-t="f6t">Privado</dt><dd data-t="f6d">Sin cuenta ni servidor. Tus archivos no salen de tu PC.</dd></div>
+      <div><dt data-t="f7t">Idiomas</dt><dd data-t="f7d">Español e inglés.</dd></div>
+    </dl>
+  </section>
+
+  <section class="plain" id="precio" aria-labelledby="precio-t">
+    <div class="buyzone">
+      <div class="price glass">
+        <div class="amount" id="precio-t" data-t="amount">Pago único</div>
+        <p><span data-t="once" style="display:inline;margin:0;color:inherit;font-size:inherit">Sin suscripción, para siempre.</span><span data-t="onceSub">Recibes el enlace de descarga por correo. Las versiones nuevas se descargan desde ese mismo enlace, sin pagar otra vez.</span></p>
+      </div>
+    </div>
+  </section>
+
+  <section class="plain" aria-labelledby="dudas">
+    <h2 id="dudas" data-t="faqH">Dudas</h2>
+    <details><summary data-t="q1">¿Funciona en Windows 10?</summary><p data-t="a1">Sí, en Windows 10 y 11 de 64 bits.</p></details>
+    <details><summary data-t="q2">¿Mueve mis archivos?</summary><p data-t="a2">No. El estante guarda un acceso al archivo original. Al sacarlo, se copia donde lo sueltes y el original sigue en su sitio.</p></details>
+    <details><summary data-t="q3">¿Dónde van las imágenes que arrastro desde una web?</summary><p data-t="a3">Se guardan en una carpeta temporal de tu PC mientras están en el estante. Sácalas a la carpeta que quieras para conservarlas: al quitarlas del estante, la copia temporal se borra.</p></details>
+    <details><summary data-t="q4">¿Cómo lo quito un rato?</summary><p data-t="a4">Pulsa Ctrl+Alt+D, o haz clic derecho en su icono junto al reloj y elige "Desactivar DropShelf".</p></details>
+    <details><summary data-t="q5">¿Necesito una cuenta?</summary><p data-t="a5">No. Pagas una vez, instalas y listo.</p></details>
+  </section>
+
+  <footer>
+    <span data-t="foot">DropShelf para Windows 10 y 11.</span>
+    <a href="legal.html#privacidad" data-t="privacy">Privacidad</a>
+    <a href="legal.html#terminos" data-t="terms">Términos</a>
+    <a href="legal.html#reembolso" data-t="refunds">Reembolsos</a>
+  </footer>
+</main>
+
+<div class="toast glass" role="status" aria-live="polite"></div>
+
+<script>
+// TODO: pega aquí el enlace de pago de Polar. Mientras esté vacío, el botón lleva a la sección de precio.
+const CHECKOUT_URL = "";
+if (CHECKOUT_URL) document.querySelectorAll("[data-buy]").forEach((a) => (a.href = CHECKOUT_URL));
+
+// ---------- ES / EN ----------
+const T = {
+  es: {
+    title: "DropShelf, un estante de cristal para Windows",
+    desc: "Arrastra archivos al borde derecho de la pantalla, déjalos ahí mientras cambias de ventana y sácalos cuando los necesites. Para Windows 10 y 11, pago único.",
+    buy: "Instalar", h1: "Aparca archivos en el borde de tu pantalla",
+    lede: "Arrastra lo que necesites al borde derecho, cambia de ventana y suéltalo donde haga falta. Para Windows 10 y 11.",
+    how: "Cómo funciona", copy: "Copiar enlace para abrirlo en el PC",
+    f1: "presupuesto.pdf", f2: "captura.png", f3: "reel-final.mp4", f4: "fuentes.zip",
+    clear: "Vaciar", drop: "Suelta archivos aquí", dropSub: "Arrástralos fuera cuando los necesites", transp: "Transparencia", remove: "Quitar del estante",
+    hint: "Pruébalo aquí: arrastra un archivo al borde derecho y luego sácalo al escritorio. El original no se mueve: lo que sacas es una copia.",
+    howH: "Así se usa",
+    s1: "Arrastra al borde", s1p: "Lleva cualquier archivo, o una imagen de una web, hasta el borde derecho. El estante se abre solo.",
+    s2: "Sigue a lo tuyo", s2p: "Cierra la carpeta, cambia de ventana, busca dónde va. El archivo te espera en el estante.",
+    s3: "Sácalo donde quieras", s3p: "Arrástralo a un chat, un correo, otra carpeta o tu editor. Se suelta como un archivo normal.",
+    featH: "Lo que trae",
+    f1t: "Cristal de verdad", f1d: "Desenfoca lo que hay detrás. Tú decides cuánta transparencia quieres.",
+    f2t: "Vista previa", f2d: "Cada archivo muestra su miniatura, la misma que en el Explorador, también mientras lo arrastras.",
+    f3t: "Imágenes de webs", f3d: "Arrastra una foto desde el navegador y queda lista en el estante, sin pasar por \"Guardar como\". Luego la sueltas en la carpeta que quieras.",
+    f4t: "Se aparta cuando quieres", f4d: "Ctrl+Alt+D lo oculta o lo vuelve a mostrar. También desde el icono junto al reloj.",
+    f5t: "Ligero", f5d: "El instalador pesa 1,3 MB. Usa el motor web que ya trae Windows, así que no carga un navegador entero.",
+    f6t: "Privado", f6d: "Sin cuenta ni servidor. Tus archivos no salen de tu PC.",
+    f7t: "Idiomas", f7d: "Español e inglés.",
+    amount: "Pago único", once: "Sin suscripción, para siempre.",
+    onceSub: "Recibes el enlace de descarga por correo. Las versiones nuevas se descargan desde ese mismo enlace, sin pagar otra vez.",
+    faqH: "Dudas",
+    q1: "¿Funciona en Windows 10?", a1: "Sí, en Windows 10 y 11 de 64 bits.",
+    q2: "¿Mueve mis archivos?", a2: "No. El estante guarda un acceso al archivo original. Al sacarlo, se copia donde lo sueltes y el original sigue en su sitio.",
+    q3: "¿Dónde van las imágenes que arrastro desde una web?", a3: "Se guardan en una carpeta temporal de tu PC mientras están en el estante. Sácalas a la carpeta que quieras para conservarlas: al quitarlas del estante, la copia temporal se borra.",
+    q4: "¿Cómo lo quito un rato?", a4: "Pulsa Ctrl+Alt+D, o haz clic derecho en su icono junto al reloj y elige \"Desactivar DropShelf\".",
+    q5: "¿Necesito una cuenta?", a5: "No. Pagas una vez, instalas y listo.",
+    foot: "DropShelf para Windows 10 y 11.", privacy: "Privacidad", terms: "Términos", refunds: "Reembolsos",
+    out: "Copia creada en el escritorio", copySuffix: " - copia", copied: "Enlace copiado", copyFail: "No se pudo copiar el enlace", other: "English",
+  },
+  en: {
+    title: "DropShelf, a glass shelf for Windows",
+    desc: "Drag files to the right edge of your screen, leave them there while you switch windows, and drag them out when you need them. For Windows 10 and 11, one-time purchase.",
+    buy: "Get", h1: "Park files on the edge of your screen",
+    lede: "Drag whatever you need to the right edge, switch windows, and drop it wherever it goes. For Windows 10 and 11.",
+    how: "How it works", copy: "Copy link to open it on your PC",
+    f1: "quote.pdf", f2: "screenshot.png", f3: "final-reel.mp4", f4: "sources.zip",
+    clear: "Clear", drop: "Drop files here", dropSub: "Drag them out when you need them", transp: "Transparency", remove: "Remove from shelf",
+    hint: "Try it here: drag a file to the right edge, then drag it out onto the desktop. The original stays put: what you drag out is a copy.",
+    howH: "How it works",
+    s1: "Drag to the edge", s1p: "Bring any file, or an image from a web page, to the right edge. The shelf opens on its own.",
+    s2: "Carry on", s2p: "Close the folder, switch windows, find where it goes. The file waits on the shelf.",
+    s3: "Drop it anywhere", s3p: "Drag it into a chat, an email, another folder or your editor. It drops like a normal file.",
+    featH: "What you get",
+    f1t: "Real glass", f1d: "It blurs whatever is behind it. You choose how transparent it is.",
+    f2t: "Previews", f2d: "Every file shows its thumbnail, the same one File Explorer shows, even while you drag it.",
+    f3t: "Images from the web", f3d: "Drag a photo out of your browser and it's ready on the shelf, no \"Save as\" needed. Drop it in any folder later.",
+    f4t: "Out of the way when you want", f4d: "Ctrl+Alt+D hides it or brings it back. You can also use its icon next to the clock.",
+    f5t: "Lightweight", f5d: "The installer is 1.3 MB. It uses the web engine Windows already has, so there's no whole browser inside.",
+    f6t: "Private", f6d: "No account, no server. Your files never leave your PC.",
+    f7t: "Languages", f7d: "English and Spanish.",
+    amount: "Pay once", once: "No subscription, yours forever.",
+    onceSub: "You get the download link by email. New versions download from that same link, at no extra cost.",
+    faqH: "Questions",
+    q1: "Does it work on Windows 10?", a1: "Yes, on 64-bit Windows 10 and 11.",
+    q2: "Does it move my files?", a2: "No. The shelf keeps a reference to the original file. When you drag it out, it's copied where you drop it and the original stays put.",
+    q3: "Where do images dragged from a web page go?", a3: "They're kept in a temporary folder on your PC while they're on the shelf. Drop them into a folder to keep them: once removed from the shelf, the temporary copy is deleted.",
+    q4: "How do I hide it for a while?", a4: "Press Ctrl+Alt+D, or right-click its icon next to the clock and choose \"Disable DropShelf\".",
+    q5: "Do I need an account?", a5: "No. Pay once, install, done.",
+    foot: "DropShelf for Windows 10 and 11.", privacy: "Privacy", terms: "Terms", refunds: "Refunds",
+    out: "Copy created on the desktop", copySuffix: " - Copy", copied: "Link copied", copyFail: "Couldn't copy the link", other: "Español",
+  },
+};
+let lang = "es";
+// "presupuesto.pdf" -> "presupuesto - copia.pdf" for files dropped out of the shelf (what Explorer does with a copy)
+const fileName = (f) => { const n = t(f.dataset.name); if (!f.dataset.copy) return n; const i = n.lastIndexOf("."); return n.slice(0, i) + t("copySuffix") + n.slice(i); };
+try { lang = localStorage.lang || (navigator.language || "es").slice(0, 2); } catch {}
+if (!T[lang]) lang = "en";
+const t = (k) => T[lang][k];
+function setLang(l) {
+  lang = l;
+  try { localStorage.lang = l; } catch {}
+  document.documentElement.lang = l;
+  document.title = t("title");
+  document.querySelector('meta[name="description"]').content = t("desc");
+  document.querySelectorAll("[data-t]").forEach((el) => (el.textContent = t(el.dataset.t)));
+  document.querySelectorAll(".file").forEach((f) => (f.querySelector("em").textContent = fileName(f)));
+  document.querySelectorAll(".tile").forEach((el) => { el.querySelector("span").textContent = fileName(el.file); el.querySelector(".x").setAttribute("aria-label", t("remove")); });
+  document.querySelectorAll(".lang").forEach((b) => { b.textContent = l === "es" ? "EN" : "ES"; b.setAttribute("aria-label", t("other")); });
+}
+document.querySelectorAll(".lang").forEach((b) => (b.onclick = () => setLang(lang === "es" ? "en" : "es")));
+
+// ---------- demo ----------
+const stage = document.getElementById("stage");
+const shelf = document.querySelector(".shelf");
+const tiles = document.querySelector(".tiles");
+const toast = document.querySelector(".toast");
+let closeTimer = 0, dragging = null, touched = false;
+
+function say(msg) { toast.textContent = msg; toast.classList.add("show"); setTimeout(() => toast.classList.remove("show"), 1800); }
+function setOpen(v) { clearTimeout(closeTimer); shelf.classList.toggle("open", v); }
+function closeSoon(ms = 500) { clearTimeout(closeTimer); closeTimer = setTimeout(() => !dragging && setOpen(false), ms); }
+shelf.addEventListener("pointerenter", () => { touched = true; setOpen(true); });
+shelf.addEventListener("pointerleave", (e) => { if (e.pointerType === "mouse") closeSoon(); });
+const overShelf = (x, y) => {
+  const r = shelf.getBoundingClientRect(), s = stage.getBoundingClientRect();
+  return y >= s.top && y <= s.bottom && x >= r.left - 8 && x <= s.right + 40;
+};
+const sync = () => { shelf.classList.toggle("has", tiles.children.length > 0); shelf.querySelector(".count").textContent = tiles.children.length; };
+
+function addTile(file) {
+  const dup = [...tiles.children].find((el) => el.file === file);
+  if (dup) { dup.animate([{ transform: "scale(1.06)" }, { transform: "none" }], { duration: 300 }); return; } // already on the shelf
+  const type = file.dataset.type;
+  const el = document.createElement("div");
+  el.className = "tile"; el.tabIndex = 0; el.file = file;
+  el.innerHTML = `<div class="glyph t-${type}">${type.toUpperCase()}</div><span></span><button class="x" type="button">✕</button>`;
+  el.querySelector("span").textContent = fileName(file);
+  const x = el.querySelector(".x");
+  x.setAttribute("aria-label", t("remove"));
+  x.addEventListener("pointerdown", (e) => e.stopPropagation()); // the ✕ is a button, not a drag handle
+  x.onclick = () => removeTile(el);
+  tiles.append(el); sync();
+  startDrag(el, true);
+  el.addEventListener("keydown", (e) => { if (e.key === "Delete" || e.key === "Backspace") removeTile(el); });
+}
+// ✕ / Clear only take it off the shelf: the original file never moved
+function removeTile(el) { el.remove(); sync(); }
+document.querySelector("[data-clear]").onclick = () => [...tiles.children].forEach(removeTile);
+
+// dropping a tile on the desktop creates a copy there, and the shelf lets go of it (like the app after a successful drop)
+function dropCopy(src, x, y) {
+  const s = stage.getBoundingClientRect();
+  const f = document.createElement("button");
+  f.className = "file copy new"; f.type = "button";
+  f.dataset.type = src.dataset.type; f.dataset.name = src.dataset.name; f.dataset.copy = "1";
+  f.innerHTML = `<span class="glyph t-${src.dataset.type}">${src.dataset.type.toUpperCase()}</span><em></em>`;
+  f.querySelector("em").textContent = fileName(f);
+  f.style.left = Math.max(8, Math.min(x - s.left - 46, s.width - 400)) + "px"; // never under the shelf
+  f.style.top = Math.max(8, Math.min(y - s.top - 40, s.height - 130)) + "px";
+  stage.append(f); wire(f);
+}
+
+const tint = document.querySelector(".tint input");
+const applyTint = () => shelf.style.setProperty("--tint", (0.55 * (1 - tint.value / 100)).toFixed(3)); // same mapping as the app
+tint.addEventListener("input", applyTint); applyTint();
+
+// one pointer-drag routine for both directions: desktop -> shelf, shelf -> desktop
+function startDrag(el, fromShelf) {
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    touched = true;
+    const sx = e.clientX, sy = e.clientY;
+    let ghost = null;
+    const move = (ev) => {
+      if (!ghost && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+      if (!ghost) {
+        dragging = el; el.dataset.dragged = "1";
+        ghost = document.createElement("div"); ghost.className = "ghost";
+        ghost.innerHTML = el.querySelector(".glyph").outerHTML; document.body.append(ghost);
+        ghost.querySelector(".glyph").style.cssText = "width:46px;height:56px;margin:0 auto;font-size:.66rem";
+        if (fromShelf) el.style.opacity = ".35"; // a desktop file stays fully there: the shelf only references it
+      }
+      ghost.style.left = ev.clientX + "px"; ghost.style.top = ev.clientY + "px";
+      if (!fromShelf) { const o = overShelf(ev.clientX, ev.clientY); shelf.classList.toggle("over", o); if (o) setOpen(true); }
+    };
+    const up = (ev) => {
+      removeEventListener("pointermove", move); removeEventListener("pointerup", up); removeEventListener("pointercancel", up);
+      if (!ghost) return;
+      ghost.remove(); el.style.opacity = ""; dragging = null; shelf.classList.remove("over");
+      const inside = overShelf(ev.clientX, ev.clientY);
+      if (!fromShelf && inside) addTile(el);
+      if (fromShelf && !inside) { const file = el.file; removeTile(el); dropCopy(file, ev.clientX, ev.clientY); say(t("out")); }
+      if (!shelf.matches(":hover")) closeSoon(fromShelf ? 300 : 1400);
+      setTimeout(() => delete el.dataset.dragged, 0);
+    };
+    addEventListener("pointermove", move); addEventListener("pointerup", up); addEventListener("pointercancel", up);
+  });
+}
+function wire(f) {
+  startDrag(f, false);
+  // keyboard / tap without dragging: send it to the shelf directly
+  f.addEventListener("click", () => { if (f.dataset.dragged) return; touched = true; setOpen(true); addTile(f); closeSoon(1600); });
+}
+document.querySelectorAll(".file").forEach(wire);
+
+document.querySelector(".copy-link").onclick = async () => {
+  try { await navigator.clipboard.writeText(location.href); say(t("copied")); } catch { say(t("copyFail")); }
+};
+
+setLang(lang);
+
+// the one intro moment: the shelf peeks open once so the edge is obviously the thing to try
+if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  setTimeout(() => { if (!touched) { setOpen(true); closeSoon(2200); } }, 1100);
+}
+</script>
+</body>
+</html>
